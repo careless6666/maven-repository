@@ -10,6 +10,7 @@ public class ArtifactFile
     public long ArtifactId { get; set; }
     public Artifact Artifact { get; set; } = null!;
     
+    public string Version { get; set; } = string.Empty;
     public string FileType { get; set; } = string.Empty; // "jar", "pom", etc.
     public string FilePath { get; set; } = string.Empty;
     public string Checksum { get; set; } = string.Empty;

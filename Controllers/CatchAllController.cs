@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using MavenRepositoryServer.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -23,26 +24,41 @@ public class CatchAllController: Controller
         
         if (Request.Method == "GET")
         {
-            if (path?.ToLower().EndsWith(".jar") == true)
+            var fileExtension = Path.GetExtension(path) ?? string.Empty;
+            
+            if (path?.ToLower().EndsWith(fileExtension) == true)
             {
-                var arr = path?.Split('/');
-                var version = arr[^2];
-                var artifactId = arr[^3];
-                var groupId = string.Join('.', arr[1..^3]);
-                var content = await _repositoryService.GetArtifactAsync(groupId, artifactId, version, "jar");
-                return File(content, "application/octet-stream", $"{artifactId}-{version}.jar");
+                var version = PackageInfoParser(path, fileExtension, out var artifactId, out var groupId, out var fileName);
+                var content = await _repositoryService.GetArtifactAsync(groupId, artifactId, version, fileExtension.Replace(".", ""));
+
+                var contentType = "text/plain";
+                switch (fileExtension)
+                {
+                    case ".jar":
+                    {
+                        contentType = "application/octet-stream";
+                        break;
+                    }
+                    case ".xml":
+                    case ".pom":
+                    case ".md5":
+                    case ".sha1":
+                    {
+                        contentType = "application/xml";
+                        break;
+                    }
+                }
+                
+                
+                return File(content, contentType, $"{artifactId}-{version}{fileExtension}");
             }
             
-            if (path?.ToLower().EndsWith(".pom") == true)
+            if (path?.ToLower().Contains(fileExtension) == true && fileExtension?.ToLower().Contains("xml") == true)
             {
-                var arr = path?.Split('/');
-                var version = arr[^2];
-                var artifactId = arr[^3];
-                var groupId = string.Join('.', arr[1..^3]);
+                var version = PackageInfoParser(path, ".pom", out var artifactId, out var groupId, out var fileName);
                 var content = await _repositoryService.GetPomFileAsync(groupId, artifactId, version);
                 return File(content, "application/xml", $"{artifactId}-{version}.pom");
             }
-
                         
             return Ok();
         }
@@ -55,12 +71,14 @@ public class CatchAllController: Controller
             {
                 var fileExtensions = "pom.sha1";
                 await CommonArtifactUpload(path, fileExtensions);
+                return Ok();
             }
             
             if (path?.ToLower().EndsWith(".pom.md5") == true)
             {
                 var fileExtensions = "pom.md5";
                 await CommonArtifactUpload(path, fileExtensions);
+                return Ok();
             }
             
             if (path?.ToLower().EndsWith(".xml") == true)
@@ -112,7 +130,7 @@ public class CatchAllController: Controller
                 return Ok();
             }
             
-            if (path?.ToLower().EndsWith("pom") == true)
+            if (path?.ToLower().EndsWith(".pom") == true)
             {
                 var fileExtensions = "pom";
                 await CommonArtifactUpload(path, fileExtensions);
@@ -126,17 +144,38 @@ public class CatchAllController: Controller
 
     private async Task CommonArtifactUpload(string path, string fileExtensions)
     {
-        var arr = path?.Split('/');
-        var version = arr[^2];
-        var artifactId = arr[^3];
-        var groupId = string.Join('.', arr[1..^3]);
-        var fileName = arr[^1];
-                    
+        var version = PackageInfoParser(path, fileExtensions, out var artifactId, out var groupId, out var fileName);
+
         using var memoryStream = new MemoryStream();
         await Request.Body.CopyToAsync(memoryStream);
                 
         IFormFile file = new FormFile(memoryStream, 0, memoryStream.Length, "streamFile", fileName);
                     
         await  _repositoryService.DeployArtifactAsync(groupId, artifactId, version, fileExtensions, file);
+    }
+
+    private static string PackageInfoParser(string path, string fileExtensions, out string artifactId, out string groupId,
+        out string fileName)
+    {
+        var arr = path?.Split('/');
+        var version = arr[^2];
+        artifactId = arr[^3];
+        groupId = string.Join('.', arr[1..^3]);
+        fileName = arr[^1];
+
+        if (fileExtensions?.Contains("xml") == true)
+        {
+            var pattern = "/(?:\\d+(?:\\.\\d+)*)(?:-SNAPSHOT|-RC|-RELEASE)?/";
+            var regex = new Regex(pattern);
+            var match = regex.Match(path);
+            if (!match.Success)
+            {
+                version = "";
+                artifactId = arr[^2];
+                groupId = string.Join('.', arr[1..^2]);
+            }
+        }
+
+        return version;
     }
 }

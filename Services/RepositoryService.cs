@@ -38,7 +38,8 @@ public class RepositoryService
             ArtifactId = artifact.Id,
             FileType = packaging,
             FilePath = filePath,
-            Checksum = checksum
+            Checksum = checksum,
+            Version = version,
         };
 
         _context.ArtifactFiles.Add(artifactFile);
@@ -199,6 +200,16 @@ public class RepositoryService
 
     private string CreateArtifactPath(string groupId, string artifactId, string version, string packaging)
     {
+        if (packaging?.ToLower().StartsWith("xml") == true)
+        {
+            return Path.Combine(
+                groupId.Replace('.', Path.DirectorySeparatorChar),
+                artifactId,
+                version,
+                $"maven-metadata.{packaging}"
+            );
+        }
+        
         return Path.Combine(
             groupId.Replace('.', Path.DirectorySeparatorChar),
             artifactId,
