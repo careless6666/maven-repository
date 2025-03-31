@@ -22,27 +22,39 @@ public class RepositoryService
     public async Task DeployArtifactAsync(string groupId, string artifactId, string version, string packaging, IFormFile file)
     {
         var artifact = await GetOrCreateArtifactAsync(groupId, artifactId, version, packaging);
-        var filePath = CreateArtifactPath(groupId, artifactId, version, packaging);
+        var filePath = CreateArtifactPath(groupId, artifactId, version, packaging, file.FileName);
         var targetPath = Path.Combine(_repositoryBase, filePath);
         Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
 
-        using (var stream = new FileStream(targetPath, FileMode.Create))
+        await using (var stream = new FileStream(targetPath, FileMode.Create))
         {
             await file.CopyToAsync(stream);
         }
 
         var checksum = await CalculateChecksumAsync(file);
 
-        var artifactFile = new ArtifactFile
-        {
-            ArtifactId = artifact.Id,
-            FileType = packaging,
-            FilePath = filePath,
-            Checksum = checksum,
-            Version = version,
-        };
+        var exists = await _context.ArtifactFiles.FirstOrDefaultAsync(x=>
+            x.Checksum == checksum 
+            &&  x.ArtifactId == artifact.Id
+            && x.FilePath == filePath
+            &&  x.FileType == packaging
+            &&  x.Version == version
+            );
 
-        _context.ArtifactFiles.Add(artifactFile);
+        if (exists == null)
+        {
+            var artifactFile = new ArtifactFile
+            {
+                ArtifactId = artifact.Id,
+                FileType = packaging,
+                FilePath = filePath,
+                Checksum = checksum,
+                Version = version,
+            };
+
+            _context.ArtifactFiles.Add(artifactFile);
+        }
+        
         await _context.SaveChangesAsync();
     }
 
@@ -94,7 +106,9 @@ public class RepositoryService
             return null;
         }
 
-        var artifactFile = artifact.Files.FirstOrDefault(f => f.FileType == packaging);
+        var lastId = artifact.Files.Where(f => f.FileType == packaging).Max( x => x.Id);
+        
+        var artifactFile = artifact.Files.FirstOrDefault(f => f.FileType == packaging && f.Id == lastId);
         if (artifactFile == null)
         {
             throw new FileNotFoundException($"File of type {packaging} not found");
@@ -188,8 +202,7 @@ public class RepositoryService
             {
                 GroupId = groupId,
                 ArtifactId = artifactId,
-                Version = version,
-                Packaging = packaging
+                Version = version
             };
             _context.Artifacts.Add(artifact);
             await _context.SaveChangesAsync();
@@ -198,7 +211,7 @@ public class RepositoryService
         return artifact;
     }
 
-    private string CreateArtifactPath(string groupId, string artifactId, string version, string packaging)
+    private string CreateArtifactPath(string groupId, string artifactId, string version, string packaging, string fileName)
     {
         if (packaging?.ToLower().StartsWith("xml") == true)
         {
@@ -214,7 +227,7 @@ public class RepositoryService
             groupId.Replace('.', Path.DirectorySeparatorChar),
             artifactId,
             version,
-            $"{artifactId}-{version}.{packaging}"
+            fileName
         );
     }
 
@@ -231,7 +244,7 @@ public class RepositoryService
     private async Task<string> CalculateChecksumAsync(IFormFile file)
     {
         using var sha1 = SHA1.Create();
-        using var stream = file.OpenReadStream();
+        await using var stream = file.OpenReadStream();
         var hash = await sha1.ComputeHashAsync(stream);
         return Convert.ToBase64String(hash);
     }

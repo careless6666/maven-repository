@@ -63,7 +63,9 @@ public class CatchAllController: Controller
         if (Request.Method == "PUT") // possible post
         {
             Console.WriteLine("Method: " + Request.Path.Value);
-            //maven2/com/example/maven-repository-server/1.0-SNAPSHOT/maven-repository-server-1.0-20250327.185037-1.pom.sha1
+            // http://localhost:5000/maven2/com/example/maven-repository-server/1.0-SNAPSHOT/maven-repository-server-1.0-20250327.185037-1.pom.sha1
+            // http://localhost:5000/maven2/com/example/maven-repository-server/1.0-SNAPSHOT/maven-repository-server-1.0-20250331.192832-3.jar
+            // 
 
             var fileExtension = GetFileExtensionForPath(path);
 
