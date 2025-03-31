@@ -91,7 +91,7 @@ public class RepositoryService
 
         if (artifact == null)
         {
-            throw new FileNotFoundException("Artifact not found");
+            return null;
         }
 
         var artifactFile = artifact.Files.FirstOrDefault(f => f.FileType == packaging);
